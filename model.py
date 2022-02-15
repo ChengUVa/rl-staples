@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from utils import float32_preprocessor
+from torch.distributions import Categorical
+
 HID_SIZE = 200
 
 class ModelA2C(nn.Module):
@@ -32,9 +34,9 @@ class ModelA2C(nn.Module):
         return self.mu(base_out), self.var(base_out), self.value(base_out) * self.val_scale
 
 
-class ModelActor(nn.Module):
+class Actor_Cont(nn.Module):
     def __init__(self, obs_size, act_size):
-        super(ModelActor, self).__init__()
+        super(Actor_Cont, self).__init__()
 
         self.mu = nn.Sequential(
             nn.Linear(obs_size, HID_SIZE),
@@ -50,10 +52,26 @@ class ModelActor(nn.Module):
         return self.mu(x)
 
 
-class ModelCritic(nn.Module):
-    def __init__(self, obs_size, val_scale=1.0):
-        super(ModelCritic, self).__init__()
-        self.val_scale = val_scale
+class Actor_Discrete(nn.Module):
+    def __init__(self, obs_size, act_size):
+        super(Actor_Discrete, self).__init__()
+
+        self.net = nn.Sequential(
+            nn.Linear(obs_size, HID_SIZE),
+            nn.ReLU(), 
+            #nn.Linear(HID_SIZE, HID_SIZE),
+            #nn.ReLU(), 
+            nn.Linear(HID_SIZE, act_size),
+            nn.Softmax(dim=-1)
+        )
+        
+    def forward(self, x):
+        return self.net(x)
+
+
+class Critic(nn.Module):
+    def __init__(self, obs_size):
+        super(Critic, self).__init__()
 
         self.value = nn.Sequential(
             nn.Linear(obs_size, HID_SIZE),
@@ -64,7 +82,7 @@ class ModelCritic(nn.Module):
         )
 
     def forward(self, x):
-        return self.value(x) * self.val_scale
+        return self.value(x) 
 
 
 class BaseAgent:
@@ -92,7 +110,7 @@ class BaseAgent:
         raise NotImplementedError
 
 
-class AgentA2C(BaseAgent):
+class AgentA2C_Shared(BaseAgent):
     def __init__(self, net, device="cpu"):
         self.net = net
         self.device = device
@@ -108,4 +126,38 @@ class AgentA2C(BaseAgent):
         actions = np.random.normal(mu, sigma)  # sample action from normal dist.
         actions = np.clip(actions, -1, 1)  # action value between -1 and 1
         # agent_states is not used for sampling actions here
+        return actions, agent_states
+
+
+class AgentA2C_Cont(BaseAgent):
+    def __init__(self, act_net, device="cpu"):
+        self.net = act_net
+        self.device = device
+
+    def __call__(self, states, agent_states):
+        states_v = float32_preprocessor(states)
+        states_v = states_v.to(self.device)
+
+        mu_v = self.net(states_v)
+        mu = mu_v.data.cpu().numpy()
+        logstd = self.net.logstd.data.cpu().numpy()
+        #rnd = np.random.normal(size=logstd.shape)
+        #actions = mu + np.exp(logstd) * rnd
+        actions = np.random.normal(mu, np.exp(logstd))
+        actions = np.clip(actions, -1, 1)
+        return actions, agent_states
+
+
+class AgentA2C_Discrete(BaseAgent):
+    def __init__(self, act_net, device="cpu"):
+        self.net = act_net
+        self.device = device
+
+    def __call__(self, states, agent_states):
+        states_v = float32_preprocessor(states)
+        states_v = states_v.to(self.device)
+
+        action_probs = self.net(states_v).data.cpu()
+        dist = Categorical(action_probs)
+        actions = dist.sample().numpy()
         return actions, agent_states

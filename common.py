@@ -23,6 +23,28 @@ def test_net(net, env, count=3, device="cpu", act_only=False):
     return rewards / count, steps / count
 
 
+def test_net_discrete(net, env, count=3, device="cpu"):
+    rewards = 0.0
+    steps = 0
+    for _ in range(count):
+        obs = env.reset()
+        while True:
+            obs_v = float32_preprocessor([obs]).to(device)
+            
+            #mu_v = net(obs_v)[0]
+            #action = mu_v.squeeze(dim=0).data.cpu().numpy()
+            #action = np.clip(action, -1, 1)
+            action_probs = net(obs_v).data.cpu()
+            dist = torch.distributions.Categorical(action_probs)
+            action = dist.sample().numpy()[0]
+            obs, reward, done, _ = env.step(action)
+            rewards += reward
+            steps += 1
+            if done:
+                break
+    return rewards / count, steps / count
+
+
 def calc_logprob(mu_v, var_v, actions_v):
     p1 = - ((mu_v - actions_v) ** 2) / (2*var_v.clamp(min=1e-3))
     p2 = - torch.log(torch.sqrt(2 * np.pi * var_v))

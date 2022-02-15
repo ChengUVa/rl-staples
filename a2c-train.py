@@ -46,7 +46,7 @@ if __name__ == "__main__":
         val_scale=VAL_SCALE,
     ).to(device)
 
-    agent = model.AgentA2C(net, device=device)
+    agent = model.AgentA2C_Shared(net, device=device)
     exp_source = experience.ExperienceSourceFirstLast(
         envs, agent, GAMMA, REWARD_STEPS
     )

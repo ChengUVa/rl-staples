@@ -1,63 +1,6 @@
-import torch
 import numpy as np
-import collections
 import time
 import sys
-
-def float32_preprocessor(states):
-    np_states = np.array(states, dtype=np.float32)
-    return torch.tensor(np_states)
-
-class TBMeanTracker:
-    """
-    TensorBoard value tracker: allows to batch fixed amount of historical values and write their mean into TB
-
-    Designed and tested with pytorch-tensorboard in mind
-    """
-    def __init__(self, writer, batch_size):
-        """
-        :param writer: writer with close() and add_scalar() methods
-        :param batch_size: integer size of batch to track
-        """
-        assert isinstance(batch_size, int)
-        assert writer is not None
-        self.writer = writer
-        self.batch_size = batch_size
-
-    def __enter__(self):
-        self._batches = collections.defaultdict(list)
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.writer.close()
-
-    @staticmethod
-    def _as_float(value):
-        assert isinstance(value, (float, int, np.ndarray, np.generic, torch.autograd.Variable)) or torch.is_tensor(value)
-        tensor_val = None
-        if isinstance(value, torch.autograd.Variable):
-            tensor_val = value.data
-        elif torch.is_tensor(value):
-            tensor_val = value
-
-        if tensor_val is not None:
-            return tensor_val.float().mean().item()
-        elif isinstance(value, np.ndarray):
-            return float(np.mean(value))
-        else:
-            return float(value)
-
-    def track(self, param_name, value, iter_index):
-        assert isinstance(param_name, str)
-        assert isinstance(iter_index, int)
-
-        data = self._batches[param_name]
-        data.append(self._as_float(value))
-
-        if len(data) >= self.batch_size:
-            self.writer.add_scalar(param_name, np.mean(data), iter_index)
-            data.clear()
-
 
 class RewardTracker:
     def __init__(self, writer, min_ts_diff=1.0):
@@ -97,3 +40,29 @@ class RewardTracker:
         #self.writer.add_scalar("reward_100", mean_reward, frame)
         self.writer.add_scalar("reward", reward, frame)
         return mean_reward if len(self.total_rewards) > 30 else None
+
+
+# def test_net(net, env,  device="cpu", count=3,):
+#     rewards = 0.0
+#     steps = 0
+#     for _ in range(count):
+#         obs = env.reset()
+#         while True:
+#             #obs_v = float32_preprocessor([obs]).to(device)
+#             obs_v = np.array([obs], dtype=np.float32)
+#             obs_v = torch.tensor(obs_v).to(device)
+#             action_probs = net(obs_v).data.cpu()
+#             dist = torch.distributions.Categorical(action_probs)
+#             #action = dist.sample().numpy()[0]
+#             action = dist.probs.argmax(dim=1).numpy()[0] # no random actions when testing
+#             obs, reward, done, _ = env.step(action)
+#             rewards += reward
+#             steps += 1
+#             if done:
+#                 break
+#     return rewards / count, steps / count
+
+
+# def float32_preprocessor(states):
+#     np_states = np.array(states, dtype=np.float32)
+#     return torch.tensor(np_states)
